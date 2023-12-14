@@ -50,6 +50,21 @@ void *txx(void* args){
     cout<<"DONE";
     pthread_exit(NULL);
 }
+bool stopcheck=false,checked=false;
+char conbuff[STSIZE]{};
+void *checkconnect(void* args){
+    while(1){
+        int ret=recv(client,conbuff,STSIZE,0);
+        if(ret>0){
+            checked=true;
+            break;
+        }
+        if(stopcheck==true){
+            break;
+        }
+    }
+    pthread_exit(NULL);
+}
 int main(){
     WSADATA wsa;
     WSAStartup(MAKEWORD(2,2),&wsa);
@@ -87,11 +102,33 @@ int main(){
             goto reconnect;
         }
     }else{
+
         cout<<"连接成功"<<'\n';
     }
+    checked=false;
+    memset(conbuff,0,sizeof(conbuff));
+    pthread_create(&thr[2],NULL,checkconnect,NULL);
     char name[STSIZE]{};
     cout<<"请输入用户名:";
     cin>>name;
+    stopcheck=true;
+    if(checked==false){
+        cout<<"连接超时，中断连接\n";
+        closesocket(client);
+        WSACleanup();
+        cout<<"EXIT";
+        system("pause");
+        return 0;
+    }else{
+        if(strcmp(conbuff,".disconnect")==0){
+            cout<<"服务器人数已满！\n";
+            closesocket(client);
+            WSACleanup();
+            cout<<"EXIT";
+            system("pause");
+            return 0;
+        }
+    }
     int data;
     data=send(client,name,STSIZE,0);
     if(data!=SOCKET_ERROR&&data!=0){
@@ -107,7 +144,6 @@ int main(){
     }
     char buff[STSIZE];
     bool ans=false;
-    string temp;
     while(1){
         memset(buff,0,sizeof(buff));
         if(!cect){
