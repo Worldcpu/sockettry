@@ -3,16 +3,14 @@
 #include<cstring>
 #include<winsock2.h>
 #include<windows.h>
-#include <pthread.h>
+#include<pthread.h>
 using namespace std;
 #pragma comment(lib, "ws2_32.lib")
 #define STSIZE 512
-#define MAXTHREAD 4
-string nn;
-bool newname=false;
-void error(){
-    cout<<"错误代码："<<WSAGetLastError;
-}
+#define MAXTHREAD 10
+bool thrr[MAXTHREAD];
+//！！！！！！！！！TODO 将thrr与他们所对应的线程队列对应起来(用map优化)
+string gbmessage;//用于缓存要广播的数据
 int loopread(SOCKET socket,char *buff,int length){//阻滞recv
     int nleft,nread;
     nleft=length;
@@ -32,37 +30,78 @@ int loopread(SOCKET socket,char *buff,int length){//阻滞recv
     }
     return(length-nleft);
 }
-SOCKET client;//方便线程自行读取，线程会自己存一份自己用的
-short i=0;
+bool guangbo=false,shutoffgb=false;//左侧广播信号，由广播线程监听。右侧关闭广播线程
+SOCKET clientcopy[MAXTHREAD];//方便广播
+short pos=0,ans=0;
+void *gb(void* args){
+    while(shutoffgb!=true){
+        while(guangbo==false);
+        for(short i=1;i<=ans;i++){
+            if(ans==0){//防止手欠
+                break;
+            }
+            if(thrr[i]==true){//检测是否有线程
+                // cout<<i<<"号线程有占用!\n";
+                if(send(clientcopy[i],gbmessage.data(),STSIZE,0)!=0){
+                    // cout<<"广播发送失败！\n";
+                }
+            }
+        }
+    guangbo=false;//信号归零
+    }
+    pthread_exit(NULL);
+}
 void *tx(void* args){
-    SOCKET c=client;
-    string names,mess,mesage;
+    bool forfirsttime=true;
+    short positon=pos;
+    SOCKET c=clientcopy[positon];//线程缓存一份不用线程同步
+    string mesage;
     char name[STSIZE]{},mes[STSIZE]{};
     int rec=loopread(c,name,STSIZE);//收名字
     if(rec!=-1&&rec!=0){
-        names=string(name);
-        nn="[御坂服务器]欢迎"+string(name)+"加入御坂网络!";
-        send(c,nn.data(),STSIZE,0);//发欢迎信息
+        if(guangbo==true){
+            while(guangbo=false);//等待广播完毕
+        }
+        gbmessage="[御坂服务器]欢迎"+string(name)+"加入御坂网络!";
+        // cout<<"线程"<<positon<<"激活广播\n";
+        guangbo=true;
     }else{
         pthread_exit(NULL);//推出现场
     }
-    cout<<"欢迎"<<names<<"加入御坂网络！"<<endl;
+    cout<<"欢迎"<<name<<"加入御坂网络！"<<endl;
     do{
         rec=loopread(c,mes,STSIZE);
-        if(strcmp(mes,"close")==0){//退出连接指令读取
-            cout<<names<<"断开了连接"<<endl;
+        if(strcmp(mes,"/close")==0){//退出连接指令读取与识别
+            cout<<name<<"断开了连接"<<endl;
+            rec=-1;
+            if(guangbo==true) while(guangbo=false);
+            gbmessage=string(name)+"断开了连接";
+            guangbo=true;
             break;
         }
-        mess=string(mes);//暂改
-        cout<<"["<<names<<"]:"<<mess<<endl;
-        //todo——实现客户端收消息
+        if(forfirsttime&&rec!=SOCKET_ERROR&&rec!=0){//优化输出格式
+            forfirsttime=false;
+            continue;
+        }
+        cout<<"["<<name<<"]:"<<mes<<endl;
+        if(guangbo==true){
+            while(guangbo=false);
+        }
+        gbmessage="["+string(name)+"]:"+string(mes);//广播其他人的信息
+        guangbo=true;
     }while(rec!=SOCKET_ERROR&&rec!=0);
+    thrr[positon]=false;
+    // cout<<"线程"<<positon<<"退出\n";
     pthread_exit(NULL);
 }
 int main(){
     system("chcp 65001");
     system("cls");
     system("title Misaka Network");
+    for(int i=1;i<=MAXTHREAD;i++){
+        thrr[i]=false;
+        // cout<<thrr[i];
+    }
     pthread_t thr[MAXTHREAD];
     cout<<"Misaka Network TCP 1 to 4 b1.0.0 Server"<<endl;
     WSADATA wsa;
@@ -70,7 +109,7 @@ int main(){
     SOCKET s=socket(AF_INET,SOCK_STREAM,0);
     if(s==INVALID_SOCKET){
         cout<<"服务端套接口创建失败！"<<endl;
-        error();
+        cout<<"错误代码："<<WSAGetLastError;
         return 0;
     }else{
         cout<<"服务端WSA初始化成功！"<<endl;
@@ -82,26 +121,35 @@ int main(){
     int sadlen=sizeof(sockaddr_in);
     if(bind(s,(sockaddr*)&saddr,sadlen)!=0){
         cout<<"服务端套接口绑定ip与端口信息失败！"<<endl;
-        error();
+        cout<<"错误代码："<<WSAGetLastError;
         return 0;
     }else{
         cout<<"服务端接口绑定ip与端口成功"<<endl;
     }
-    if(listen(s,4)!=0){
+    if(listen(s,5)!=0){
         cout<<"监听失败！"<<endl;
-        error();
+        cout<<"错误代码："<<WSAGetLastError<<endl;
     }else{
         cout<<"开始监听"<<endl;
     }
-    sockaddr_in caddr;
+    SOCKET client;
+    if(pthread_create(&thr[MAXTHREAD],NULL,gb,NULL)!=0) cout<<"PTHREAD FAIL!";
     while(1){
         client=accept(s,(sockaddr*)NULL,NULL);
         if(client==INVALID_SOCKET){
             cout<<"连接失败"<<endl;
         }else{
-            cout<<"连接成功"<<endl;
-            i+=1;
-            if(pthread_create(&thr[i],NULL,tx,NULL)!=0){//创建线程，用i构建假for循环
+            for(short i=1;i<=MAXTHREAD;i++){//设置线程被占用
+                if(thrr[i]==false){
+                    thrr[i]=true;
+                    pos=i;
+                    break;
+                }
+            }
+            ans=max(ans,pos);//防守欠
+            // cout<<"客户端连接成功,占用第"<<pos<<"线程 历史最高线程使用数"<<ans<<'\n'<<endl;
+            clientcopy[pos]=client;//pos这里是线程的顺序
+            if(pthread_create(&thr[pos],NULL,tx,NULL)!=0){//创建线程，用i构建假for循环
                 cout<<"PTHREAD FAIL!";
             }
         }

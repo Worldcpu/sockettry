@@ -2,10 +2,12 @@
 #include<iostream>
 #include<windows.h>
 #include<cstring>
-#include<thread>
+#include<pthread.h>
 using namespace std;
 #pragma comment(lib,"Ws2_32.lib")
 #define STSIZE 512
+#define MAXTHREAD 4
+SOCKET client;
 int loopread(SOCKET socket,char *buff,int length){
     int nleft,nread;
     nleft=length;
@@ -26,33 +28,37 @@ int loopread(SOCKET socket,char *buff,int length){
     return(length-nleft);
 }
 bool cect=true;
-void recvfroms(SOCKET sockk){//todo——实现客户端与服务端收发信息，改pthread多线程
-    cout<<"YESSSS!";
-    char recie[STSIZE];
-    string message;
-    int ret;
+void *txx(void* args){
+    char close[6]="close";
+    cout<<'\n';
     bool swift=true;
-    while(1){
-        memset(recie,0,STSIZE);
-        loopread(sockk,recie,STSIZE);
-        if(strcmp(recie,"closeall")){
+    char sendbuf[STSIZE],recvbuf[STSIZE]{};
+    memset(recvbuf,0,STSIZE);
+    bool cat=true;
+    do{
+        memset(sendbuf,0,STSIZE);
+        cin.getline(sendbuf,STSIZE);
+        if(strcmp(sendbuf,"/close")==0||cect==false){
+            send(client,sendbuf,STSIZE,0);
+            cout<<"断开连接"<<'\n';
+            // Sleep(0.5);
             cect=false;
-            break;
-        }else if(cect==false){
-            break;
+        }else{
+            send(client,sendbuf,STSIZE,0);
         }
-        message=string(recie);
-        cout<<message<<'\n';
-    }
+    }while(cect);
+    cout<<"DONE";
+    pthread_exit(NULL);
 }
 int main(){
+    WSADATA wsa;
+    WSAStartup(MAKEWORD(2,2),&wsa);
+    pthread_t thr[MAXTHREAD];
     system("chcp 65001");
     system("cls");
     system("title Misaka Network");
     cout<<"Misaka Network TCP 1 to 1 b1.0.0 Client"<<'\n';
-    WSADATA wsa;
-    WSAStartup(MAKEWORD(2,2),&wsa);
-    SOCKET client=socket(AF_INET,SOCK_STREAM,0);
+    client=socket(AF_INET,SOCK_STREAM,0);
     if(client==INVALID_SOCKET){
         cout<<"套接口创建client错误！";
         WSACleanup();
@@ -66,7 +72,6 @@ int main(){
     c.sin_port=htons(7777);
     int len=sizeof(c);
     short swit;
-    SOCKET server;
     reconnect:
     if(connect(client,(SOCKADDR*)&c,len)!=0){
         system("title Misaka Network");
@@ -80,48 +85,49 @@ int main(){
             return 0;
         }else if(swit==1){
             goto reconnect;
-        }else{
-            cout<<"小子别闹,我再给你一次机会:";
-            system("title 老弟别闹");
-            goto rechose;
         }
     }else{
         cout<<"连接成功"<<'\n';
     }
-    string close="close",n;
     char name[STSIZE]{};
-    memset(name,0,STSIZE);
     cout<<"请输入用户名:";
     cin>>name;
-    n=string(name);
     int data;
     data=send(client,name,STSIZE,0);
     if(data!=SOCKET_ERROR&&data!=0){
         cout<<"欢迎加入御坂网络！输入/close断开链接";
     }
-    thread mythread(recvfroms,client);
-    cout<<'\n';
-    bool swift=true;
-    char sendbuf[STSIZE],recvbuf[STSIZE];
-    memset(recvbuf,0,STSIZE);
-    do{
-        memset(sendbuf,0,STSIZE);
-        cout<<"Enter a word:";
-        cin.getline(sendbuf,STSIZE);
-        if(strcmp(sendbuf,"/close")==0||cect==false){
-            send(client,close.data(),STSIZE,0);
-            cect=false;
-            cout<<"断开连接"<<'\n';
-            break;
-        }else{
-            send(client,sendbuf,STSIZE,0);
-            cout<<'\n';
+    if(pthread_create(&thr[1],NULL,txx,NULL)!=0){
+        cout<<"线程创建出错！，连接中止"<<endl;
+        closesocket(client);
+        WSACleanup();
+        cout<<"EXIT";
+        pthread_exit(NULL);
+        system("pause");
+    }
+    char buff[STSIZE];
+    bool ans=false;
+    string temp;
+    while(1){
+        memset(buff,0,sizeof(buff));
+        if(!cect){
+            cout<<"YES";
+            goto stop;
         }
-    }while(1);
+        int rect=recv(client,buff,STSIZE,0);
+        if(rect!=0&&rect!=SOCKET_ERROR){
+            if(ans==false){
+                cout<<'\n';
+                ans=true;
+            }
+            cout<<buff<<endl;
+        }
+    }
+    stop:
     closesocket(client);
     WSACleanup();
-    mythread.join();
     cout<<"EXIT";
+    pthread_exit(NULL);
     system("pause");
     return 0;
 }
