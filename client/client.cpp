@@ -27,7 +27,7 @@ int loopread(SOCKET socket,char *buff,int length){
     }
     return(length-nleft);
 }
-bool cect=true;
+bool closemain=false;
 void *txx(void* args){
     char close[6]="close";
     cout<<'\n';
@@ -38,19 +38,20 @@ void *txx(void* args){
     do{
         memset(sendbuf,0,STSIZE);
         cin.getline(sendbuf,STSIZE);
-        if(strcmp(sendbuf,"/close")==0||cect==false){
+        if(strcmp(sendbuf,"/close")==0||swift==false){
             send(client,sendbuf,STSIZE,0);
             cout<<"断开连接"<<'\n';
+            closemain=true;
             // Sleep(0.5);
-            cect=false;
+            swift=false;
         }else{
             send(client,sendbuf,STSIZE,0);
         }
-    }while(cect);
+    }while(swift);
     cout<<"DONE";
     pthread_exit(NULL);
 }
-bool stopcheck=false,checked=false;
+bool stopcheck=false,checked=false,firstcheck=false;
 char conbuff[STSIZE]{};
 void *checkconnect(void* args){
     while(1){
@@ -64,6 +65,20 @@ void *checkconnect(void* args){
         }
     }
     pthread_exit(NULL);
+}
+char name[STSIZE]{};
+void recin(){
+    while(1){
+        memset(name,0,sizeof(name));
+        cout<<"请输入用户名:";
+        cin>>name;
+        if(name[0]=='.'||name[0]=='/'){
+            cout<<"用户名首位不能为小数点或斜杠，请重新输入\n";
+            continue;
+        }else{
+            break;
+        }
+    }
 }
 int main(){
     WSADATA wsa;
@@ -88,6 +103,7 @@ int main(){
     int len=sizeof(c);
     short swit;
     reconnect:
+    firstcheck=false;
     if(connect(client,(SOCKADDR*)&c,len)!=0){
         system("title Misaka Network");
         cout<<WSAGetLastError<<'\n';
@@ -102,15 +118,19 @@ int main(){
             goto reconnect;
         }
     }else{
-
         cout<<"连接成功"<<'\n';
     }
     checked=false;
     memset(conbuff,0,sizeof(conbuff));
     pthread_create(&thr[2],NULL,checkconnect,NULL);
-    char name[STSIZE]{};
+    recinname:
+    memset(name,0,sizeof(name));
     cout<<"请输入用户名:";
     cin>>name;
+    if(name[0]=='.'||name[0]=='/'){
+        cout<<"用户名首位不能为小数点或斜杠，请重新输入\n";
+        goto recinname;
+    }
     stopcheck=true;
     if(checked==false){
         cout<<"连接超时，中断连接\n";
@@ -129,28 +149,53 @@ int main(){
             return 0;
         }
     }
-    int data;
-    data=send(client,name,STSIZE,0);
-    if(data!=SOCKET_ERROR&&data!=0){
-        cout<<"欢迎加入御坂网络！输入/close断开链接";
-    }
-    if(pthread_create(&thr[1],NULL,txx,NULL)!=0){
-        cout<<"线程创建出错！，连接中止"<<endl;
-        closesocket(client);
-        WSACleanup();
-        cout<<"EXIT";
-        pthread_exit(NULL);
-        system("pause");
-    }
+    checked=false;
+    stopcheck=false;
+    // if(data!=SOCKET_ERROR&&data!=0){
+    //     cout<<"欢迎加入御坂网络！输入/close断开链接";
+    // }
+    // if(pthread_create(&thr[1],NULL,txx,NULL)!=0){
+    //     cout<<"线程创建出错！，连接中止"<<endl;
+    //     closesocket(client);
+    //     WSACleanup();
+    //     cout<<"EXIT";
+    //     system("pause");
+    //     return 0;
+    // }
     char buff[STSIZE];
-    bool ans=false;
+    bool ans=false,inital=false;
+    rewhile:
+    send(client,name,STSIZE,0);
     while(1){
         memset(buff,0,sizeof(buff));
-        if(!cect){
-            cout<<"YES";
-            goto stop;
-        }
         int rect=recv(client,buff,STSIZE,0);
+        if(rect!=0&&rect!=SOCKET_ERROR&&!inital){
+            if(strcmp(buff,".samename")==0){
+                cout<<"用户名重复使用！请重新输入用户名以注册。\n";
+                recin();
+                goto rewhile;
+            }else{
+                cout<<"欢迎加入御坂网络！输入/close断开链接\n";
+                if(pthread_create(&thr[1],NULL,txx,NULL)!=0){
+                    cout<<"线程创建出错！，连接中止"<<endl;
+                    closesocket(client);
+                    WSACleanup();
+                    cout<<"EXIT";
+                    system("pause");
+                    return 0;
+                }
+                inital=true;
+                continue;
+            }
+        }
+        if(closemain==true){
+            pthread_join(thr[1],NULL);
+            closesocket(client);
+            WSACleanup();
+            cout<<"EXIT";
+            system("pause");
+            return 0;
+        }
         if(rect!=0&&rect!=SOCKET_ERROR){
             if(ans==false){
                 cout<<'\n';
@@ -159,11 +204,4 @@ int main(){
             cout<<buff<<endl;
         }
     }
-    stop:
-    closesocket(client);
-    WSACleanup();
-    cout<<"EXIT";
-    pthread_exit(NULL);
-    system("pause");
-    return 0;
 }

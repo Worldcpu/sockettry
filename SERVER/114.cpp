@@ -1,7 +1,4 @@
 #include<bits/stdc++.h>
-#include<map>
-#include<string.h>
-#include<cstring>
 #include<winsock2.h>
 #include<windows.h>
 #include<pthread.h>
@@ -12,6 +9,7 @@ using namespace std;
 bool thrr[MAXTHREAD];
 map<short,SOCKET> thrsocket;
 bool thrbool[MAXTHREAD];
+char namelist[MAXTHREAD][STSIZE]{},samename[10]=".samename";
 //！！！！！！！！！TODO 将thrr与他们所对应的线程队列对应起来(用map优化)
 string gbmessage;//用于缓存要广播的数据
 int loopread(SOCKET socket,char *buff,int length){//阻滞recv
@@ -55,30 +53,50 @@ void *gb(void* args){
     pthread_exit(NULL);
 }
 void *tx(void* args){
-    bool forfirsttime=true;
+    bool forfirsttime=true,namecheck=true;
     short positon=pos;
     // SOCKET c=clientcopy[positon];//线程缓存一份不用线程同步
-    string mesage;
-    char name[STSIZE]{},mes[STSIZE]{};
-    int rec=loopread(thrsocket[positon],name,STSIZE);//收名字
+    char mes[STSIZE]{};
+    rewait:
+    // for(int i=0;i<STSIZE;i++){
+    //     namelist[positon][i]=0;
+    // }
+    // cout<<"name1="<<namelist[positon]<<endl;
+    // cout<<"进入read\n";
+    int rec;//收名字
+    rec=loopread(thrsocket[positon],namelist[positon],STSIZE);
+    // cout<<"name2="<<namelist[positon]<<endl;
     if(rec!=-1&&rec!=0){
+        for(int i=1;i<MAXTHREAD;i++){
+            if(strcmp(namelist[i],namelist[positon])==0&&i!=positon){
+                send(thrsocket[positon],samename,STSIZE,0);
+                thrr[positon]=false;
+                memset(namelist[positon],0,sizeof(namelist[positon]));
+                goto rewait;
+                namecheck=false;
+            }
+        }
         if(guangbo==true){
             while(guangbo=false);//等待广播完毕
         }
-        gbmessage="[御坂服务器]欢迎"+string(name)+"加入御坂网络!";
+        gbmessage="[御坂服务器]欢迎"+string(namelist[positon])+"加入御坂网络!";
         // cout<<"线程"<<positon<<"激活广播\n";
+        cout<<"名称广播\n";
         guangbo=true;
-    }else{
+     }else{
         pthread_exit(NULL);//推出现场
-    }
-    cout<<"欢迎"<<name<<"加入御坂网络！"<<endl;
+        }
+    cout<<"欢迎"<<namelist[positon]<<"加入御坂网络！"<<endl;
     do{
-        rec=loopread(clientcopy[positon],mes,STSIZE);
+        // cout<<"进入循环\n";
+        rec=0;
+        rec=loopread(thrsocket[positon],mes,STSIZE);
+        // cout<<"收到mes："<<mes<<"\n";
         if(strcmp(mes,"/close")==0){//退出连接指令读取与识别
-            cout<<name<<"断开了连接"<<endl;
+            cout<<namelist[positon]<<"断开了连接"<<endl;
             rec=-1;
             if(guangbo==true) while(guangbo=false);
-            gbmessage=string(name)+"断开了连接";
+            gbmessage=string(namelist[positon])+"断开了连接";
             guangbo=true;
             break;
         }
@@ -86,14 +104,16 @@ void *tx(void* args){
             forfirsttime=false;
             continue;
         }
-        cout<<"["<<name<<"]:"<<mes<<endl;
+        cout<<"["<<namelist[positon]<<"]:"<<mes<<endl;
         if(guangbo==true){
             while(guangbo=false);
         }
-        gbmessage="["+string(name)+"]:"+string(mes);//广播其他人的信息
+        gbmessage="["+string(namelist[positon])+"]:"+string(mes);//广播其他人的信息
+        cout<<"收发广播\n";
         guangbo=true;
     }while(rec!=SOCKET_ERROR&&rec!=0);
     thrr[positon]=false;
+    memset(namelist[positon],0,sizeof(namelist[positon]));
     // cout<<"线程"<<positon<<"退出\n";
     pthread_exit(NULL);
 }
@@ -106,7 +126,7 @@ int main(){
         // cout<<thrr[i];
     }
     pthread_t thr[MAXTHREAD];
-    string disc=".disconnect",acce=".accept";
+    char disc[12]=".disconnect",acce[8]=".accept";
     cout<<"Misaka Network TCP 1 to 4 b1.0.0 Server"<<endl;
     WSADATA wsa;
     WSAStartup(MAKEWORD(2,2),&wsa);
@@ -150,14 +170,14 @@ int main(){
                     thrsocket[i]=client;
                     pos=i;
                     ans=max(ans,pos);
-                    send(client,acce.data(),STSIZE,0);
+                    send(client,acce,STSIZE,0);
                     if(pthread_create(&thr[pos],NULL,tx,NULL)!=0){//创建线程，用i构建假for循环
                         cout<<"PTHREAD FAIL!";
                     }
                     break;
                 }
                 if(i+1==MAXTHREAD){
-                    send(client,disc.data(),STSIZE,0);
+                    send(client,disc,STSIZE,0);
                     break;
                 }
             }//防守欠
