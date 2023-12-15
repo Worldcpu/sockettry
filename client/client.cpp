@@ -1,12 +1,12 @@
+#include<bits/stdc++.h>
 #include<winsock2.h>
-#include<iostream>
 #include<windows.h>
-#include<cstring>
 #include<pthread.h>
 using namespace std;
 #pragma comment(lib,"Ws2_32.lib")
 #define STSIZE 512
 #define MAXTHREAD 4
+#define MAXCOMMANDLIST 15
 SOCKET client;
 int loopread(SOCKET socket,char *buff,int length){
     int nleft,nread;
@@ -27,16 +27,68 @@ int loopread(SOCKET socket,char *buff,int length){
     }
     return(length-nleft);
 }
-bool closemain=false;
+char sendbuf[STSIZE]{};
+string commandlist[MAXCOMMANDLIST]={"msg"};
+bool closemain=false,sacceptcommmand=0;
+short commandflag=0;
+void commandexcute(char pd[6],short charpos){
+    if(strstr(pd,"msg")!=NULL){
+        int ipos,ans=0;
+        char namebuff[STSIZE],messagebuff[STSIZE],msgmode[5]=".msg";
+        memset(namebuff,0,STSIZE);
+        memset(messagebuff,0,STSIZE);
+        for(int i=charpos;i<=STSIZE;i++){
+            if(sendbuf[i]==32){
+                break;
+            }else if(sendbuf[i]==0){
+                cout<<"指令格式错误！/msg 私聊发送者姓名 私聊信息"<<endl;
+                return;
+            }
+            // cout<<"COMMAND_SENDBUF:"<<sendbuf[i]<<endl;
+            namebuff[ans]=sendbuf[i];
+            ans++;
+            ipos=i;
+        }
+        ans=0;
+        // cout<<"name:"<<namebuff<<endl;
+        if(sendbuf[ipos+2]==0||sendbuf[ipos+2]==32){
+            cout<<"指令格式错误！/msg 私聊发送者姓名 私聊信息"<<endl;
+            return;
+        }else ipos+=2;
+        for(int i=ipos;i<=STSIZE;i++){
+            if(sendbuf[i]==NULL){
+                break;
+            }
+            messagebuff[ans]=sendbuf[i];
+            ans++;
+        }
+        // cout<<"message:"<<messagebuff<<endl;
+        send(client,msgmode,STSIZE,0);
+        while(sacceptcommmand==0);
+        // cout<<"发送私信名称\n";
+        send(client,namebuff,STSIZE,0);
+        while(commandflag==0);
+        if(commandflag!=1){
+            // cout<<"无用户名\n";
+            return;
+        }
+        // cout<<"发送信息\n";
+        send(client,messagebuff,STSIZE,0);
+        commandflag=0;
+        sacceptcommmand=0;
+    }
+}
 void *txx(void* args){
     char close[6]="close";
     cout<<'\n';
     bool swift=true;
-    char sendbuf[STSIZE],recvbuf[STSIZE]{};
+    char recvbuf[STSIZE]{},panduan[6]{};
     memset(recvbuf,0,STSIZE);
     bool cat=true;
+    continuewhile:
     do{
         memset(sendbuf,0,STSIZE);
+        memset(panduan,0,STSIZE);
         cin.getline(sendbuf,STSIZE);
         if(strcmp(sendbuf,"/close")==0||swift==false){
             send(client,sendbuf,STSIZE,0);
@@ -44,11 +96,35 @@ void *txx(void* args){
             closemain=true;
             // Sleep(0.5);
             swift=false;
-        }else{
+        }else if(sendbuf[0]=='/'){
+            short charpos,commandpos;
+            for(int i=1;i<=STSIZE;i++){
+                // cout<<"i++";
+                if(sendbuf[i]==0||sendbuf[i]==32){
+                    break;
+                }
+                panduan[i-1]=sendbuf[i];
+                // cout<<"i="<<i<<"\npanduan[i]="<<panduan[i]<<"\nsendbuf[i]="<<sendbuf[i];
+                charpos=i;
+                // cout<<"\n";
+            }
+            // cout<<panduan<<"\n";
+            if(sendbuf[charpos+1]==0){ 
+                // cout<<"not passed\n";
+                goto continuewhile;
+            }
+            for(int i=0;i<=MAXCOMMANDLIST;i++){
+                if(strcmp(panduan,commandlist[i].data())==0){
+                    commandpos=i;
+                    break;
+                }
+            }
+            commandexcute(panduan,charpos+2);
+        }
+        else{
             send(client,sendbuf,STSIZE,0);
         }
     }while(swift);
-    cout<<"DONE";
     pthread_exit(NULL);
 }
 bool stopcheck=false,checked=false,firstcheck=false;
@@ -136,7 +212,7 @@ int main(){
         cout<<"连接超时，中断连接\n";
         closesocket(client);
         WSACleanup();
-        cout<<"EXIT";
+        cout<<"EXIT\n";
         system("pause");
         return 0;
     }else{
@@ -144,7 +220,7 @@ int main(){
             cout<<"服务器人数已满！\n";
             closesocket(client);
             WSACleanup();
-            cout<<"EXIT";
+            cout<<"EXIT\n";
             system("pause");
             return 0;
         }
@@ -195,6 +271,27 @@ int main(){
             cout<<"EXIT";
             system("pause");
             return 0;
+        }
+        if(rect!=0&&rect!=SOCKET_ERROR&&strcmp(buff,".acceptcommand")==0){
+            sacceptcommmand=1;
+            continue;
+        }
+        if(rect!=0&&rect!=SOCKET_ERROR&&strcmp(buff,".accept")==0){
+            commandflag=1;
+            continue;
+        }else if(rect!=0&&rect!=SOCKET_ERROR&&strcmp(buff,".nousername")==0){
+            cout<<"用户名不存在"<<endl;
+            commandflag=2;
+            continue;
+        }
+        if(rect!=0&&rect!=SOCKET_ERROR&&strstr(buff,".msgm")!=NULL){
+            char msgbuff[STSIZE]{};
+            for(int i=5;i<=STSIZE;i++){
+                if(buff[i]==NULL) break;
+                msgbuff[i-5]=buff[i];
+            }
+            cout<<msgbuff<<endl;
+            continue;
         }
         if(rect!=0&&rect!=SOCKET_ERROR){
             if(ans==false){

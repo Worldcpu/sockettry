@@ -9,8 +9,7 @@ using namespace std;
 bool thrr[MAXTHREAD];
 map<short,SOCKET> thrsocket;
 bool thrbool[MAXTHREAD];
-char namelist[MAXTHREAD][STSIZE]{},samename[10]=".samename";
-//！！！！！！！！！TODO 将thrr与他们所对应的线程队列对应起来(用map优化)
+char namelist[MAXTHREAD][STSIZE]{},acceptcomad[15]=".acceptcommand",samename[10]=".samename",nousername[12]=".nousername",disc[12]=".disconnect",acce[8]=".accept";
 string gbmessage;//用于缓存要广播的数据
 int loopread(SOCKET socket,char *buff,int length){//阻滞recv
     int nleft,nread;
@@ -81,7 +80,7 @@ void *tx(void* args){
         }
         gbmessage="[御坂服务器]欢迎"+string(namelist[positon])+"加入御坂网络!";
         // cout<<"线程"<<positon<<"激活广播\n";
-        cout<<"名称广播\n";
+        // cout<<"名称广播\n";
         guangbo=true;
      }else{
         pthread_exit(NULL);//推出现场
@@ -100,6 +99,44 @@ void *tx(void* args){
             guangbo=true;
             break;
         }
+        if(strcmp(mes,".msg")==0){
+            memset(mes,0,sizeof(mes));
+            send(thrsocket[positon],acceptcomad,STSIZE,0);
+            short anss=1;
+            while(1){
+                anss=0;
+                anss=loopread(thrsocket[positon],mes,STSIZE);
+                if(anss>0){
+                    break;
+                }
+            }
+            // cout<<"mesname:"<<mes<<endl;
+            char msgmesage[STSIZE]{};
+            short namepos;
+            bool wehave=false;
+            for(int i=1;i<=MAXTHREAD;i++){
+                if(strcmp(mes,namelist[i])==0){
+                    namepos=i;
+                    send(thrsocket[positon],acce,STSIZE,0);
+                    wehave=true;
+                }
+            }
+            if(wehave){
+                while(1){
+                    anss=0;
+                    anss=loopread(thrsocket[positon],msgmesage,STSIZE);
+                    if(anss>0){
+                        break;
+                    }
+                }
+                string buffsend=".msgm[来自于"+string(namelist[positon])+"的私信]:"+msgmesage,servercout="["+string(namelist[positon])+"对"+string(namelist[namepos])+"的私聊]:"+msgmesage;
+                send(thrsocket[namepos],buffsend.data(),STSIZE,0);
+                cout<<servercout<<endl;
+            }else{
+                send(thrsocket[positon],nousername,STSIZE,0);
+            }
+            continue;
+        }
         if(forfirsttime&&rec!=SOCKET_ERROR&&rec!=0){//优化输出格式
             forfirsttime=false;
             continue;
@@ -109,7 +146,7 @@ void *tx(void* args){
             while(guangbo=false);
         }
         gbmessage="["+string(namelist[positon])+"]:"+string(mes);//广播其他人的信息
-        cout<<"收发广播\n";
+        // cout<<"收发广播\n";
         guangbo=true;
     }while(rec!=SOCKET_ERROR&&rec!=0);
     thrr[positon]=false;
@@ -126,7 +163,6 @@ int main(){
         // cout<<thrr[i];
     }
     pthread_t thr[MAXTHREAD];
-    char disc[12]=".disconnect",acce[8]=".accept";
     cout<<"Misaka Network TCP 1 to 4 b1.0.0 Server"<<endl;
     WSADATA wsa;
     WSAStartup(MAKEWORD(2,2),&wsa);
