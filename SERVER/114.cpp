@@ -9,7 +9,7 @@ using namespace std;
 bool thrr[MAXTHREAD];
 map<short,SOCKET> thrsocket;
 bool thrbool[MAXTHREAD];
-char namelist[MAXTHREAD][STSIZE]{},acceptcomad[15]=".acceptcommand",samename[10]=".samename",nousername[12]=".nousername",disc[12]=".disconnect",acce[8]=".accept";
+char namelist[MAXTHREAD][STSIZE]{},heartbeatok[15]=".heartbeatok",acceptcomad[15]=".acceptcommand",samename[10]=".samename",nousername[12]=".nousername",disc[12]=".disconnect",acce[8]=".accept";
 string gbmessage;//用于缓存要广播的数据
 int loopread(SOCKET socket,char *buff,int length){//阻滞recv
     int nleft,nread;
@@ -86,13 +86,28 @@ void *tx(void* args){
         pthread_exit(NULL);//推出现场
         }
     cout<<"欢迎"<<namelist[positon]<<"加入御坂网络！"<<endl;
+    time_t start,stop;
+    start=time(NULL);
+    cout<<start<<endl;
     do{
+        bool koo=false;
+        memset(mes,0,STSIZE);
         // cout<<"进入循环\n";
         rec=0;
-        rec=loopread(thrsocket[positon],mes,STSIZE);
+        rec=recv(thrsocket[positon],mes,STSIZE,0);
+        stop=time(NULL);
+        // cout<<"STOP:"<<stop<<" START:"<<start<<endl;
         // cout<<"收到mes："<<mes<<"\n";
         if(strcmp(mes,"/close")==0){//退出连接指令读取与识别
             cout<<namelist[positon]<<"断开了连接"<<endl;
+            rec=-1;
+            if(guangbo==true) while(guangbo=false);
+            gbmessage=string(namelist[positon])+"断开了连接";
+            guangbo=true;
+            break;
+        }
+        if(stop-start>7){
+            cout<<namelist[positon]<<"断开了连接(连接超时)"<<endl;
             rec=-1;
             if(guangbo==true) while(guangbo=false);
             gbmessage=string(namelist[positon])+"断开了连接";
@@ -137,18 +152,25 @@ void *tx(void* args){
             }
             continue;
         }
+        if(strcmp(mes,".checkconnect")==0){
+            send(thrsocket[positon],heartbeatok,STSIZE,0);
+            start=time(NULL);
+            continue;
+        }
         if(forfirsttime&&rec!=SOCKET_ERROR&&rec!=0){//优化输出格式
             forfirsttime=false;
             continue;
         }
-        cout<<"["<<namelist[positon]<<"]:"<<mes<<endl;
-        if(guangbo==true){
-            while(guangbo=false);
+        if(rec!=0&&rec!=SOCKET_ERROR){
+            cout<<"["<<namelist[positon]<<"]:"<<mes<<endl;
+            if(guangbo==true){
+                while(guangbo=false);
+            }
+            gbmessage="["+string(namelist[positon])+"]:"+string(mes);//广播其他人的信息
+            // cout<<"收发广播\n";
+            guangbo=true;
         }
-        gbmessage="["+string(namelist[positon])+"]:"+string(mes);//广播其他人的信息
-        // cout<<"收发广播\n";
-        guangbo=true;
-    }while(rec!=SOCKET_ERROR&&rec!=0);
+    }while(1);
     thrr[positon]=false;
     memset(namelist[positon],0,sizeof(namelist[positon]));
     // cout<<"线程"<<positon<<"退出\n";
@@ -177,7 +199,7 @@ int main(){
     sockaddr_in saddr;
     saddr.sin_family=AF_INET;
     saddr.sin_addr.S_un.S_addr=inet_addr("127.0.0.1");
-    saddr.sin_port=htons(7777);
+    saddr.sin_port=htons(1145);
     int sadlen=sizeof(sockaddr_in);
     if(bind(s,(sockaddr*)&saddr,sadlen)!=0){
         cout<<"服务端套接口绑定ip与端口信息失败！"<<endl;

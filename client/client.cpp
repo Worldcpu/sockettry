@@ -27,7 +27,7 @@ int loopread(SOCKET socket,char *buff,int length){
     }
     return(length-nleft);
 }
-char sendbuf[STSIZE]{};
+char sendbuf[STSIZE]{},beatmes[14]=".checkconnect";
 string commandlist[MAXCOMMANDLIST]={"msg"};
 bool closemain=false,sacceptcommmand=0;
 short commandflag=0;
@@ -78,6 +78,44 @@ void commandexcute(char pd[6],short charpos){
         sacceptcommmand=0;
     }
 }
+bool heartbeating=false,txisexcute=false,recvieeserver=false,lostconnect=false;
+void *heartbeat(void* args){
+    time_t starttime,stoptime;
+    while(1){
+        Sleep(5000);
+        if(txisexcute==true){
+            // cout<<"txisnotok";
+            while(txisexcute);
+        }
+        else{
+            // cout<<"txisok";
+        } 
+        // cout<<"发送beat"<<endl;
+        send(client,beatmes,STSIZE,0);
+        starttime=time(NULL);
+        while(recvieeserver==false){
+            stoptime=time(NULL);
+            if(stoptime-starttime==5){
+                // cout<<"时间到\n";
+                break;
+            }
+        }
+        if(recvieeserver==false){
+            // cout<<"连接超时,";
+            lostconnect=true;
+            heartbeating=false;
+            closemain=true;
+            break;
+        }else{
+            // cout<<"检测成功";
+            heartbeating=false;
+            recvieeserver=false;
+            lostconnect=false;
+        }
+    }
+    // cout<<"结束\n";
+    pthread_exit(NULL);
+}
 void *txx(void* args){
     char close[6]="close";
     cout<<'\n';
@@ -87,17 +125,23 @@ void *txx(void* args){
     bool cat=true;
     continuewhile:
     do{
+        txisexcute=false;
         memset(sendbuf,0,STSIZE);
         memset(panduan,0,STSIZE);
         cin.getline(sendbuf,STSIZE);
+        while(heartbeating){
+            if(lostconnect==true);
+            swift=false;
+        }
+        txisexcute=true;
         if(strcmp(sendbuf,"/close")==0||swift==false){
             send(client,sendbuf,STSIZE,0);
             cout<<"断开连接"<<'\n';
             closemain=true;
             // Sleep(0.5);
-            swift=false;
+            break;
         }else if(sendbuf[0]=='/'){
-            short charpos,commandpos;
+            short charpos,commandpos=-1;
             for(int i=1;i<=STSIZE;i++){
                 // cout<<"i++";
                 if(sendbuf[i]==0||sendbuf[i]==32){
@@ -119,7 +163,7 @@ void *txx(void* args){
                     break;
                 }
             }
-            commandexcute(panduan,charpos+2);
+            if(commandpos!=-1) commandexcute(panduan,charpos+2);
         }
         else{
             send(client,sendbuf,STSIZE,0);
@@ -175,7 +219,7 @@ int main(){
     sockaddr_in c;
     c.sin_family=AF_INET;
     c.sin_addr.S_un.S_addr=inet_addr("127.0.0.1");
-    c.sin_port=htons(7777);
+    c.sin_port=htons(1145);
     int len=sizeof(c);
     short swit;
     reconnect:
@@ -260,17 +304,22 @@ int main(){
                     system("pause");
                     return 0;
                 }
+                pthread_create(&thr[3],NULL,heartbeat,NULL);
                 inital=true;
                 continue;
             }
         }
         if(closemain==true){
-            pthread_join(thr[1],NULL);
             closesocket(client);
             WSACleanup();
-            cout<<"EXIT";
+            cout<<"EXIT\n";
             system("pause");
             return 0;
+        }
+        if(rect!=0&&rect!=SOCKET_ERROR&&strcmp(buff,".heartbeatok")==0){
+            cout<<"收到beat\n";
+            recvieeserver=true;
+            continue;
         }
         if(rect!=0&&rect!=SOCKET_ERROR&&strcmp(buff,".acceptcommand")==0){
             sacceptcommmand=1;
